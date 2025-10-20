@@ -43,7 +43,7 @@ $sesi_presensi = $conn->query("SELECT sp.*, k.nama_kelas
                                FROM sesi_presensi sp 
                                JOIN kelas k ON sp.kelas_id = k.id 
                                WHERE sp.guru_id = $guru_id 
-                               ORDER BY sp.tanggal DESC, sp.waktu_mulai DESC");
+                               ORDER BY sp.id DESC");
 ?>
 
 <!DOCTYPE html>

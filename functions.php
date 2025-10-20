@@ -210,6 +210,14 @@ function closeSesi($sesi_id, $guru_id = null) {
                                 }
                                 $o_sql->close();
                             }
+                            // Also insert a presensi_siswa record marking the student as 'alpha' (absent)
+                            $ins_pres = $conn->prepare("INSERT INTO presensi_siswa (sesi_id, siswa_id, status, waktu_presensi) VALUES (?, ?, ?, NOW())");
+                            if ($ins_pres) {
+                                $status_absen = 'alpha';
+                                $ins_pres->bind_param('iis', $sesi_id, $siswa_id, $status_absen);
+                                $ins_pres->execute();
+                                $ins_pres->close();
+                            }
                         }
                     }
                     $s_sql->close();
