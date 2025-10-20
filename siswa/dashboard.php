@@ -13,6 +13,23 @@ $siswa_id = $_SESSION['user_id'];
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['presensi'])) {
     $sesi_id = $_POST['sesi_id'];
     $status = $_POST['status'];
+    // Cek status sesi: hanya izinkan presensi jika sesi masih 'aktif'
+    $sesi_check = $conn->prepare("SELECT status FROM sesi_presensi WHERE id = ? LIMIT 1");
+    if ($sesi_check) {
+        $sesi_check->bind_param("i", $sesi_id);
+        $sesi_check->execute();
+        $sesi_res = $sesi_check->get_result();
+        if ($sesi_res && $sesi_row = $sesi_res->fetch_assoc()) {
+            if ($sesi_row['status'] !== 'aktif') {
+                $error = "Sesi presensi sudah selesai. Anda tidak dapat melakukan presensi.";
+                $sesi_check->close();
+                // skip further processing
+            }
+        } else {
+            $error = "Sesi presensi tidak ditemukan.";
+            $sesi_check->close();
+        }
+    }
     
     // Cek apakah sudah presensi
     $cek_sql = "SELECT * FROM presensi_siswa WHERE sesi_id = ? AND siswa_id = ?";
@@ -21,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['presensi'])) {
     $cek_stmt->execute();
     $cek_result = $cek_stmt->get_result();
     
-    if ($cek_result->num_rows === 0) {
+    if (!isset($error) && $cek_result->num_rows === 0) {
         $sql = "INSERT INTO presensi_siswa (sesi_id, siswa_id, status, waktu_presensi) 
                 VALUES (?, ?, ?, NOW())";
         $stmt = $conn->prepare($sql);
@@ -44,6 +61,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['presensi_guru'])) {
     $sesi_id = $_POST['sesi_id'];
     $guru_id = $_POST['guru_id'];
     $status = $_POST['status_guru'];
+    // Cek status sesi: hanya izinkan presensi guru jika sesi masih 'aktif'
+    $sesi_check = $conn->prepare("SELECT status FROM sesi_presensi WHERE id = ? LIMIT 1");
+    if ($sesi_check) {
+        $sesi_check->bind_param("i", $sesi_id);
+        $sesi_check->execute();
+        $sesi_res = $sesi_check->get_result();
+        if ($sesi_res && $sesi_row = $sesi_res->fetch_assoc()) {
+            if ($sesi_row['status'] !== 'aktif') {
+                $error = "Sesi presensi sudah selesai. Anda tidak dapat melakukan presensi guru.";
+                $sesi_check->close();
+            }
+        } else {
+            $error = "Sesi presensi tidak ditemukan.";
+            $sesi_check->close();
+        }
+    }
     
     // Cek apakah sudah presensi
     $cek_sql = "SELECT * FROM presensi_guru WHERE sesi_id = ? AND guru_id = ?";
@@ -52,7 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['presensi_guru'])) {
     $cek_stmt->execute();
     $cek_result = $cek_stmt->get_result();
     
-    if ($cek_result->num_rows === 0) {
+    if (!isset($error) && $cek_result->num_rows === 0) {
         $sql = "INSERT INTO presensi_guru (sesi_id, guru_id, status) VALUES (?, ?, ?)";
         $stmt = $conn->prepare($sql);
         $stmt->bind_param("iis", $sesi_id, $guru_id, $status);
@@ -139,14 +172,44 @@ function buatNotifikasiAbsen($siswa_id, $sesi_id, $status_absen) {
             <h2>Kelas Saya</h2>
             <div class="card-container">
                 <?php while ($kelas = $kelas_siswa->fetch_assoc()): ?>
+                <?php
+                    // For each class, fetch mata_pelajaran separately so we can render one card per subject
+                    $kelas_id = $kelas['id'];
+                    $mp_stmt = $conn->prepare("SELECT DISTINCT mata_pelajaran FROM guru_kelas WHERE kelas_id = ? ORDER BY mata_pelajaran ASC");
+                    $mp_stmt->bind_param("i", $kelas_id);
+                    $mp_stmt->execute();
+                    $mp_result = $mp_stmt->get_result();
+
+                    // If no subjects found, still render a single card for the class
+                    if ($mp_result->num_rows === 0) {
+                ?>
                 <div class="card">
                     <h3><?php echo $kelas['nama_kelas']; ?></h3>
                     <p><strong>Tingkat:</strong> <?php echo $kelas['tingkat']; ?></p>
                     <p><strong>Status:</strong> <?php echo $kelas['is_ketua'] ? 'Ketua Kelas' : 'Siswa'; ?></p>
-                    <button class="btn" onclick="openModal(<?php echo $kelas['id']; ?>, '<?php echo $kelas['nama_kelas']; ?>', <?php echo $kelas['is_ketua']; ?>)">
+                    <button class="btn" onclick="openModal(<?php echo $kelas['id']; ?>, '<?php echo addslashes($kelas['nama_kelas']); ?>', <?php echo $kelas['is_ketua']; ?>)">
                         Lihat Presensi
                     </button>
                 </div>
+                <?php
+                    } else {
+                        while ($mp = $mp_result->fetch_assoc()) {
+                            $mata_pelajaran = $mp['mata_pelajaran'];
+                ?>
+                <div class="card">
+                    <h3><?php echo $kelas['nama_kelas']; ?> - <?php echo htmlspecialchars($mata_pelajaran); ?></h3>
+                    <p><strong>Tingkat:</strong> <?php echo $kelas['tingkat']; ?></p>
+                    <p><strong>Mata Pelajaran:</strong> <?php echo htmlspecialchars($mata_pelajaran); ?></p>
+                    <p><strong>Status:</strong> <?php echo $kelas['is_ketua'] ? 'Ketua Kelas' : 'Siswa'; ?></p>
+                    <button class="btn" onclick="openModal(<?php echo $kelas['id']; ?>, '<?php echo addslashes($kelas['nama_kelas']); ?>', <?php echo $kelas['is_ketua']; ?>, '<?php echo addslashes($mata_pelajaran); ?>')">
+                        Lihat Presensi
+                    </button>
+                </div>
+                <?php
+                        }
+                    }
+                    $mp_stmt->close();
+                ?>
                 <?php endwhile; ?>
             </div>
         </div>
@@ -164,9 +227,9 @@ function buatNotifikasiAbsen($siswa_id, $sesi_id, $status_absen) {
     </div>
 
     <script>
-        function openModal(kelasId, namaKelas, isKetua) {
+        function openModal(kelasId, namaKelas, isKetua, mataPelajaran) {
             document.getElementById('modalTitle').textContent = 'Presensi - ' + namaKelas;
-            
+
             // Load sesi presensi via AJAX
             var xhr = new XMLHttpRequest();
             xhr.onreadystatechange = function() {
@@ -176,8 +239,12 @@ function buatNotifikasiAbsen($siswa_id, $sesi_id, $status_absen) {
             };
             xhr.open('POST', 'get_sesi_presensi.php', true);
             xhr.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
-            xhr.send('kelas_id=' + kelasId + '&is_ketua=' + isKetua);
-            
+            var data = 'kelas_id=' + encodeURIComponent(kelasId) + '&is_ketua=' + encodeURIComponent(isKetua);
+            if (typeof mataPelajaran !== 'undefined' && mataPelajaran !== null && mataPelajaran !== '') {
+                data += '&mata_pelajaran=' + encodeURIComponent(mataPelajaran);
+            }
+            xhr.send(data);
+
             document.getElementById('presensiModal').style.display = 'block';
         }
         
@@ -203,21 +270,18 @@ function buatNotifikasiAbsen($siswa_id, $sesi_id, $status_absen) {
             var form = document.createElement('form');
             form.method = 'POST';
             form.style.display = 'none';
-            
-            var sesiInput = document.createElement('input');
-            sesiInput.name = 'sesi_id';
-            sesiInput.value = sesiId;
-            form.appendChild(sesiInput);
-            
-            var statusInput = document.createElement('input');
-            statusInput.name = 'status';
-            statusInput.value = status;
-            form.appendChild(statusInput);
-            
-            var submitInput = document.createElement('input');
-            submitInput.name = 'presensi';
-            submitInput.type = 'submit';
-            form.appendChild(submitInput);
+            var inputs = [
+                {name: 'sesi_id', value: sesiId},
+                {name: 'status', value: status},
+                {name: 'presensi', value: '1'}
+            ];
+            inputs.forEach(function(i) {
+                var el = document.createElement('input');
+                el.type = 'hidden';
+                el.name = i.name;
+                el.value = i.value;
+                form.appendChild(el);
+            });
             
             document.body.appendChild(form);
             form.submit();
@@ -233,26 +297,19 @@ function buatNotifikasiAbsen($siswa_id, $sesi_id, $status_absen) {
             var form = document.createElement('form');
             form.method = 'POST';
             form.style.display = 'none';
-            
-            var sesiInput = document.createElement('input');
-            sesiInput.name = 'sesi_id';
-            sesiInput.value = sesiId;
-            form.appendChild(sesiInput);
-            
-            var guruInput = document.createElement('input');
-            guruInput.name = 'guru_id';
-            guruInput.value = guruId;
-            form.appendChild(guruInput);
-            
-            var statusInput = document.createElement('input');
-            statusInput.name = 'status_guru';
-            statusInput.value = status;
-            form.appendChild(statusInput);
-            
-            var submitInput = document.createElement('input');
-            submitInput.name = 'presensi_guru';
-            submitInput.type = 'submit';
-            form.appendChild(submitInput);
+            var inputs = [
+                {name: 'sesi_id', value: sesiId},
+                {name: 'guru_id', value: guruId},
+                {name: 'status_guru', value: status},
+                {name: 'presensi_guru', value: '1'}
+            ];
+            inputs.forEach(function(i) {
+                var el = document.createElement('input');
+                el.type = 'hidden';
+                el.name = i.name;
+                el.value = i.value;
+                form.appendChild(el);
+            });
             
             document.body.appendChild(form);
             form.submit();

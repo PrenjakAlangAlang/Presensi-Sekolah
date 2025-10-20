@@ -31,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['buat_sesi'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['tutup_sesi'])) {
     $sesi_id_close = intval($_POST['sesi_id']);
     if (closeSesi($sesi_id_close, $guru_id)) {
-        $success = "Sesi presensi berhasil ditutup.";
+        $success = "Sesi presensi berhasil diselesaikan.";
     } else {
         $error = "Gagal menutup sesi. Pastikan anda pemilik sesi.";
     }

@@ -62,6 +62,139 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bind_param("ii", $orangtua_id, $siswa_id);
         $stmt->execute();
     }
+
+    // Update handlers for edit actions
+    if (isset($_POST['update_user'])) {
+        $id = intval($_POST['id']);
+        $username = $_POST['username'];
+        $nama_lengkap = $_POST['nama_lengkap'];
+        $role = $_POST['role'];
+        if (!empty($_POST['password'])) {
+            $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
+            $sql = "UPDATE users SET username = ?, password = ?, nama_lengkap = ?, role = ? WHERE id = ?";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("ssssi", $username, $password, $nama_lengkap, $role, $id);
+        } else {
+            $sql = "UPDATE users SET username = ?, nama_lengkap = ?, role = ? WHERE id = ?";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("sssi", $username, $nama_lengkap, $role, $id);
+        }
+        $stmt->execute();
+        header("Location: " . $_SERVER['PHP_SELF']); exit();
+    }
+
+    if (isset($_POST['update_kelas'])) {
+        $id = intval($_POST['id']);
+        $nama_kelas = $_POST['nama_kelas'];
+        $tingkat = $_POST['tingkat'];
+        $sql = "UPDATE kelas SET nama_kelas = ?, tingkat = ? WHERE id = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("ssi", $nama_kelas, $tingkat, $id);
+        $stmt->execute();
+        header("Location: " . $_SERVER['PHP_SELF']); exit();
+    }
+
+    if (isset($_POST['update_guru_kelas'])) {
+        $id = intval($_POST['id']);
+        $guru_id = intval($_POST['guru_id']);
+        $kelas_id = intval($_POST['kelas_id']);
+        $mata_pelajaran = $_POST['mata_pelajaran'];
+        $sql = "UPDATE guru_kelas SET guru_id = ?, kelas_id = ?, mata_pelajaran = ? WHERE id = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("iisi", $guru_id, $kelas_id, $mata_pelajaran, $id);
+        $stmt->execute();
+        header("Location: " . $_SERVER['PHP_SELF']); exit();
+    }
+
+    if (isset($_POST['update_siswa_kelas'])) {
+        $id = intval($_POST['id']);
+        $siswa_id = intval($_POST['siswa_id']);
+        $kelas_id = intval($_POST['kelas_id']);
+        $is_ketua = isset($_POST['is_ketua']) ? 1 : 0;
+        $sql = "UPDATE siswa_kelas SET siswa_id = ?, kelas_id = ?, is_ketua = ? WHERE id = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("iiii", $siswa_id, $kelas_id, $is_ketua, $id);
+        $stmt->execute();
+        header("Location: " . $_SERVER['PHP_SELF']); exit();
+    }
+
+    if (isset($_POST['update_orangtua'])) {
+        $id = intval($_POST['id']);
+        $orangtua_id = intval($_POST['orangtua_id']);
+        $siswa_id = intval($_POST['siswa_id']);
+        $sql = "UPDATE orangtua_siswa SET orangtua_id = ?, siswa_id = ? WHERE id = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("iii", $orangtua_id, $siswa_id, $id);
+        $stmt->execute();
+        header("Location: " . $_SERVER['PHP_SELF']); exit();
+    }
+}
+
+// If an edit is requested, fetch the record for prefill
+$editType = $_GET['type'] ?? null;
+$editId = isset($_GET['action']) && $_GET['action'] === 'edit' ? intval($_GET['id'] ?? 0) : 0;
+$editItem = null;
+if ($editType && $editId) {
+    if ($editType === 'users') {
+        $s = $conn->prepare("SELECT id, username, nama_lengkap, role FROM users WHERE id = ? LIMIT 1");
+        $s->bind_param('i', $editId);
+        $s->execute();
+        $editItem = $s->get_result()->fetch_assoc();
+    } elseif ($editType === 'kelas') {
+        $s = $conn->prepare("SELECT id, nama_kelas, tingkat FROM kelas WHERE id = ? LIMIT 1");
+        $s->bind_param('i', $editId);
+        $s->execute();
+        $editItem = $s->get_result()->fetch_assoc();
+    } elseif ($editType === 'guru-kelas') {
+        $s = $conn->prepare("SELECT id, guru_id, kelas_id, mata_pelajaran FROM guru_kelas WHERE id = ? LIMIT 1");
+        $s->bind_param('i', $editId);
+        $s->execute();
+        $editItem = $s->get_result()->fetch_assoc();
+    } elseif ($editType === 'siswa-kelas') {
+        $s = $conn->prepare("SELECT id, siswa_id, kelas_id, is_ketua FROM siswa_kelas WHERE id = ? LIMIT 1");
+        $s->bind_param('i', $editId);
+        $s->execute();
+        $editItem = $s->get_result()->fetch_assoc();
+    } elseif ($editType === 'orangtua') {
+        $s = $conn->prepare("SELECT id, orangtua_id, siswa_id FROM orangtua_siswa WHERE id = ? LIMIT 1");
+        $s->bind_param('i', $editId);
+        $s->execute();
+        $editItem = $s->get_result()->fetch_assoc();
+    }
+}
+
+// Handle delete actions (simple GET-based delete with confirmation on client)
+if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['type']) && isset($_GET['id'])) {
+    $delType = $_GET['type'];
+    $delId = intval($_GET['id']);
+    switch ($delType) {
+        case 'users':
+            $d = $conn->prepare("DELETE FROM users WHERE id = ?");
+            $d->bind_param('i', $delId);
+            $d->execute();
+            break;
+        case 'kelas':
+            $d = $conn->prepare("DELETE FROM kelas WHERE id = ?");
+            $d->bind_param('i', $delId);
+            $d->execute();
+            break;
+        case 'guru-kelas':
+            $d = $conn->prepare("DELETE FROM guru_kelas WHERE id = ?");
+            $d->bind_param('i', $delId);
+            $d->execute();
+            break;
+        case 'siswa-kelas':
+            $d = $conn->prepare("DELETE FROM siswa_kelas WHERE id = ?");
+            $d->bind_param('i', $delId);
+            $d->execute();
+            break;
+        case 'orangtua':
+            $d = $conn->prepare("DELETE FROM orangtua_siswa WHERE id = ?");
+            $d->bind_param('i', $delId);
+            $d->execute();
+            break;
+    }
+    header("Location: " . $_SERVER['PHP_SELF']); exit();
 }
 
 // Get data
@@ -161,6 +294,7 @@ $orangtua_siswa = $conn->query("SELECT os.*, o.nama_lengkap as nama_orangtua, s.
                             <th>Username</th>
                             <th>Nama Lengkap</th>
                             <th>Role</th>
+                            <th>Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -170,6 +304,11 @@ $orangtua_siswa = $conn->query("SELECT os.*, o.nama_lengkap as nama_orangtua, s.
                             <td><?php echo $user['username']; ?></td>
                             <td><?php echo $user['nama_lengkap']; ?></td>
                             <td><?php echo $user['role']; ?></td>
+                            <td>
+                                <a href="?action=edit&type=users&id=<?php echo $user['id']; ?>">Edit</a>
+                                &nbsp;|&nbsp;
+                                <a href="?action=delete&type=users&id=<?php echo $user['id']; ?>" onclick="return confirm('Hapus user ini?');">Hapus</a>
+                            </td>
                         </tr>
                         <?php endwhile; ?>
                     </tbody>
@@ -200,6 +339,7 @@ $orangtua_siswa = $conn->query("SELECT os.*, o.nama_lengkap as nama_orangtua, s.
                             <th>ID</th>
                             <th>Nama Kelas</th>
                             <th>Tingkat</th>
+                            <th>Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -208,6 +348,11 @@ $orangtua_siswa = $conn->query("SELECT os.*, o.nama_lengkap as nama_orangtua, s.
                             <td><?php echo $kelas_item['id']; ?></td>
                             <td><?php echo $kelas_item['nama_kelas']; ?></td>
                             <td><?php echo $kelas_item['tingkat']; ?></td>
+                            <td>
+                                <a href="?action=edit&type=kelas&id=<?php echo $kelas_item['id']; ?>">Edit</a>
+                                &nbsp;|&nbsp;
+                                <a href="?action=delete&type=kelas&id=<?php echo $kelas_item['id']; ?>" onclick="return confirm('Hapus kelas ini?');">Hapus</a>
+                            </td>
                         </tr>
                         <?php endwhile; ?>
                     </tbody>
@@ -257,6 +402,7 @@ $orangtua_siswa = $conn->query("SELECT os.*, o.nama_lengkap as nama_orangtua, s.
                             <th>Guru</th>
                             <th>Kelas</th>
                             <th>Mata Pelajaran</th>
+                            <th>Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -265,6 +411,11 @@ $orangtua_siswa = $conn->query("SELECT os.*, o.nama_lengkap as nama_orangtua, s.
                             <td><?php echo $gk['nama_guru']; ?></td>
                             <td><?php echo $gk['nama_kelas']; ?></td>
                             <td><?php echo $gk['mata_pelajaran']; ?></td>
+                            <td>
+                                <a href="?action=edit&type=guru-kelas&id=<?php echo $gk['id']; ?>">Edit</a>
+                                &nbsp;|&nbsp;
+                                <a href="?action=delete&type=guru-kelas&id=<?php echo $gk['id']; ?>" onclick="return confirm('Hapus relasi guru-kelas ini?');">Hapus</a>
+                            </td>
                         </tr>
                         <?php endwhile; ?>
                     </tbody>
@@ -316,6 +467,7 @@ $orangtua_siswa = $conn->query("SELECT os.*, o.nama_lengkap as nama_orangtua, s.
                             <th>Siswa</th>
                             <th>Kelas</th>
                             <th>Ketua Kelas</th>
+                            <th>Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -324,6 +476,11 @@ $orangtua_siswa = $conn->query("SELECT os.*, o.nama_lengkap as nama_orangtua, s.
                             <td><?php echo $sk['nama_siswa']; ?></td>
                             <td><?php echo $sk['nama_kelas']; ?></td>
                             <td><?php echo $sk['is_ketua'] ? 'Ya' : 'Tidak'; ?></td>
+                            <td>
+                                <a href="?action=edit&type=siswa-kelas&id=<?php echo $sk['id']; ?>">Edit</a>
+                                &nbsp;|&nbsp;
+                                <a href="?action=delete&type=siswa-kelas&id=<?php echo $sk['id']; ?>" onclick="return confirm('Hapus relasi siswa-kelas ini?');">Hapus</a>
+                            </td>
                         </tr>
                         <?php endwhile; ?>
                     </tbody>
@@ -369,6 +526,7 @@ $orangtua_siswa = $conn->query("SELECT os.*, o.nama_lengkap as nama_orangtua, s.
                         <tr>
                             <th>Orang Tua</th>
                             <th>Siswa</th>
+                            <th>Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -376,12 +534,113 @@ $orangtua_siswa = $conn->query("SELECT os.*, o.nama_lengkap as nama_orangtua, s.
                         <tr>
                             <td><?php echo $os['nama_orangtua']; ?></td>
                             <td><?php echo $os['nama_siswa']; ?></td>
+                            <td>
+                                <a href="?action=edit&type=orangtua&id=<?php echo $os['id']; ?>">Edit</a>
+                                &nbsp;|&nbsp;
+                                <a href="?action=delete&type=orangtua&id=<?php echo $os['id']; ?>" onclick="return confirm('Hapus relasi orangtua-siswa ini?');">Hapus</a>
+                            </td>
                         </tr>
                         <?php endwhile; ?>
                     </tbody>
                 </table>
             </div>
         </div>
+
+    <?php if ($editItem): ?>
+    <div class="container" style="margin-top:20px;">
+        <div class="section">
+            <h2>Edit <?php echo htmlspecialchars($editType); ?></h2>
+            <?php if ($editType === 'users'): ?>
+            <form method="POST">
+                <input type="hidden" name="id" value="<?php echo $editItem['id']; ?>">
+                <div class="form-group"><input type="text" name="username" value="<?php echo htmlspecialchars($editItem['username']); ?>" required></div>
+                <div class="form-group"><input type="password" name="password" placeholder="(Kosongkan jika tidak ingin mengganti)"></div>
+                <div class="form-group"><input type="text" name="nama_lengkap" value="<?php echo htmlspecialchars($editItem['nama_lengkap']); ?>" required></div>
+                <div class="form-group">
+                    <select name="role" required>
+                        <option value="admin" <?php echo $editItem['role']==='admin'?'selected':''; ?>>Admin</option>
+                        <option value="guru" <?php echo $editItem['role']==='guru'?'selected':''; ?>>Guru</option>
+                        <option value="siswa" <?php echo $editItem['role']==='siswa'?'selected':''; ?>>Siswa</option>
+                        <option value="orangtua" <?php echo $editItem['role']==='orangtua'?'selected':''; ?>>Orang Tua</option>
+                    </select>
+                </div>
+                <button type="submit" name="update_user">Simpan Perubahan</button>
+            </form>
+            <?php elseif ($editType === 'kelas'): ?>
+            <form method="POST">
+                <input type="hidden" name="id" value="<?php echo $editItem['id']; ?>">
+                <div class="form-group"><input type="text" name="nama_kelas" value="<?php echo htmlspecialchars($editItem['nama_kelas']); ?>" required></div>
+                <div class="form-group"><input type="text" name="tingkat" value="<?php echo htmlspecialchars($editItem['tingkat']); ?>" required></div>
+                <button type="submit" name="update_kelas">Simpan Perubahan</button>
+            </form>
+            <?php elseif ($editType === 'guru-kelas'): ?>
+            <form method="POST">
+                <input type="hidden" name="id" value="<?php echo $editItem['id']; ?>">
+                <div class="form-group">
+                    <select name="guru_id" required>
+                        <?php $guru->data_seek(0); while($g = $guru->fetch_assoc()): ?>
+                        <option value="<?php echo $g['id']; ?>" <?php echo $g['id']==$editItem['guru_id']?'selected':''; ?>><?php echo $g['nama_lengkap']; ?></option>
+                        <?php endwhile; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <?php $kelas->data_seek(0); ?>
+                    <select name="kelas_id" required>
+                        <?php while($k = $kelas->fetch_assoc()): ?>
+                        <option value="<?php echo $k['id']; ?>" <?php echo $k['id']==$editItem['kelas_id']?'selected':''; ?>><?php echo $k['nama_kelas']; ?></option>
+                        <?php endwhile; ?>
+                    </select>
+                </div>
+                <div class="form-group"><input type="text" name="mata_pelajaran" value="<?php echo htmlspecialchars($editItem['mata_pelajaran']); ?>" required></div>
+                <button type="submit" name="update_guru_kelas">Simpan Perubahan</button>
+            </form>
+            <?php elseif ($editType === 'siswa-kelas'): ?>
+            <form method="POST">
+                <input type="hidden" name="id" value="<?php echo $editItem['id']; ?>">
+                <div class="form-group">
+                    <?php $siswa->data_seek(0); ?>
+                    <select name="siswa_id" required>
+                        <?php while($s = $siswa->fetch_assoc()): ?>
+                        <option value="<?php echo $s['id']; ?>" <?php echo $s['id']==$editItem['siswa_id']?'selected':''; ?>><?php echo $s['nama_lengkap']; ?></option>
+                        <?php endwhile; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <?php $kelas->data_seek(0); ?>
+                    <select name="kelas_id" required>
+                        <?php while($k = $kelas->fetch_assoc()): ?>
+                        <option value="<?php echo $k['id']; ?>" <?php echo $k['id']==$editItem['kelas_id']?'selected':''; ?>><?php echo $k['nama_kelas']; ?></option>
+                        <?php endwhile; ?>
+                    </select>
+                </div>
+                <div class="form-group"><label><input type="checkbox" name="is_ketua" <?php echo $editItem['is_ketua'] ? 'checked' : ''; ?>> Jadikan Ketua</label></div>
+                <button type="submit" name="update_siswa_kelas">Simpan Perubahan</button>
+            </form>
+            <?php elseif ($editType === 'orangtua'): ?>
+            <form method="POST">
+                <input type="hidden" name="id" value="<?php echo $editItem['id']; ?>">
+                <div class="form-group">
+                    <?php $orangtua->data_seek(0); ?>
+                    <select name="orangtua_id" required>
+                        <?php while($o = $orangtua->fetch_assoc()): ?>
+                        <option value="<?php echo $o['id']; ?>" <?php echo $o['id']==$editItem['orangtua_id']?'selected':''; ?>><?php echo $o['nama_lengkap']; ?></option>
+                        <?php endwhile; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <?php $siswa->data_seek(0); ?>
+                    <select name="siswa_id" required>
+                        <?php while($s = $siswa->fetch_assoc()): ?>
+                        <option value="<?php echo $s['id']; ?>" <?php echo $s['id']==$editItem['siswa_id']?'selected':''; ?>><?php echo $s['nama_lengkap']; ?></option>
+                        <?php endwhile; ?>
+                    </select>
+                </div>
+                <button type="submit" name="update_orangtua">Simpan Perubahan</button>
+            </form>
+            <?php endif; ?>
+        </div>
+    </div>
+    <?php endif; ?>
     </div>
 
     <script>

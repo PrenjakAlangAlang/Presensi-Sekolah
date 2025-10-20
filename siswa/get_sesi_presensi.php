@@ -9,20 +9,50 @@ if (!isLoggedIn() || !isSiswa()) {
 
 $kelas_id = $_POST['kelas_id'];
 $is_ketua = $_POST['is_ketua'];
+$mata_pelajaran = isset($_POST['mata_pelajaran']) ? trim($_POST['mata_pelajaran']) : '';
 $siswa_id = $_SESSION['user_id'];
 
-// Get sesi presensi aktif untuk kelas ini
-$sesi_sql = "SELECT sp.*, u.nama_lengkap as nama_guru, 
-                    (SELECT status FROM presensi_siswa WHERE sesi_id = sp.id AND siswa_id = $siswa_id) as status_presensi,
+// Build sesi presensi query with optional mata_pelajaran filter
+    $sesi_sql = "SELECT sp.*, u.nama_lengkap as nama_guru, 
+                    (SELECT status FROM presensi_siswa WHERE sesi_id = sp.id AND siswa_id = ?) as status_presensi,
                     (SELECT status FROM presensi_guru WHERE sesi_id = sp.id AND guru_id = sp.guru_id) as status_guru
              FROM sesi_presensi sp 
              JOIN users u ON sp.guru_id = u.id 
-             WHERE sp.kelas_id = ? AND sp.status = 'aktif' 
-             ORDER BY sp.tanggal DESC, sp.waktu_mulai DESC";
-$stmt = $conn->prepare($sesi_sql);
-$stmt->bind_param("i", $kelas_id);
-$stmt->execute();
-$sesi_result = $stmt->get_result();
+             WHERE sp.kelas_id = ? AND sp.status = 'aktif'";
+
+    $params = [];
+    $types = '';
+    // First param for subquery siswa_id
+    $types .= 'i';
+    $params[] = $siswa_id;
+
+    // kelas_id param
+    $types .= 'i';
+    $params[] = $kelas_id;
+
+    if ($mata_pelajaran !== '') {
+        $sesi_sql .= " AND sp.mata_pelajaran = ?";
+        $types .= 's';
+        $params[] = $mata_pelajaran;
+    }
+
+    $sesi_sql .= " ORDER BY sp.tanggal DESC, sp.waktu_mulai DESC";
+
+    $stmt = $conn->prepare($sesi_sql);
+    if ($stmt === false) {
+        die('Query prepare failed: ' . $conn->error);
+    }
+
+    // bind params dynamically
+    $bind_names[] = $types;
+    for ($i = 0; $i < count($params); $i++) {
+        $bind_name = 'bind' . $i;
+        $$bind_name = $params[$i];
+        $bind_names[] = &$$bind_name;
+    }
+    call_user_func_array(array($stmt, 'bind_param'), $bind_names);
+    $stmt->execute();
+    $sesi_result = $stmt->get_result();
 
 if ($sesi_result->num_rows > 0) {
     while ($sesi = $sesi_result->fetch_assoc()) {

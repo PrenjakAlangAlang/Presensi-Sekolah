@@ -22,7 +22,18 @@ if ($res && $res->num_rows > 0) {
     echo '<tbody>';
     while ($row = $res->fetch_assoc()) {
         $status = htmlspecialchars($row['status']);
-        $waktu = htmlspecialchars($row['created_at'] ?? '');
+        // presensi timestamp is stored in `waktu_presensi` (use that field)
+        $waktu_raw = $row['waktu_presensi'] ?? '';
+        $waktu = '';
+        if ($waktu_raw) {
+            // try to format the datetime for readability
+            $ts = strtotime($waktu_raw);
+            if ($ts !== false) {
+                $waktu = htmlspecialchars(date('Y-m-d H:i:s', $ts));
+            } else {
+                $waktu = htmlspecialchars($waktu_raw);
+            }
+        }
         echo '<tr>';
         echo '<td style="padding:8px; border-bottom:1px solid #eee;">' . htmlspecialchars($row['nama_lengkap']) . '</td>';
         echo '<td style="padding:8px; border-bottom:1px solid #eee;">' . htmlspecialchars($row['username']) . '</td>';

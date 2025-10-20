@@ -15,6 +15,28 @@ $anak_sql = "SELECT u.* FROM users u
             WHERE os.orangtua_id = $orangtua_id";
 $anak_result = $conn->query($anak_sql);
 
+// Collect anak rows to reuse (so we can query presensi for only these children)
+$anak_rows = [];
+if ($anak_result) {
+    while ($r = $anak_result->fetch_assoc()) {
+        $anak_rows[] = $r;
+    }
+}
+
+// Build presensi list for these children (recent attendance notifications)
+$presensi_result = null;
+if (count($anak_rows) > 0) {
+    $ids = implode(',', array_map('intval', array_column($anak_rows, 'id')));
+    $presensi_sql = "SELECT ps.*, sp.mata_pelajaran, k.nama_kelas, sp.tanggal as sesi_tanggal 
+                     FROM presensi_siswa ps 
+                     JOIN sesi_presensi sp ON ps.sesi_id = sp.id 
+                     JOIN kelas k ON sp.kelas_id = k.id 
+                     WHERE ps.siswa_id IN ($ids) 
+                     ORDER BY ps.waktu_presensi DESC 
+                     LIMIT 200";
+    $presensi_result = $conn->query($presensi_sql);
+}
+
 // Get notifikasi absen
 $notifikasi_sql = "SELECT na.*, u.nama_lengkap as nama_siswa, sp.mata_pelajaran, k.nama_kelas 
                   FROM notifikasi_absen na 
@@ -61,46 +83,53 @@ $notifikasi_result = $conn->query($notifikasi_sql);
                     </tr>
                 </thead>
                 <tbody>
-                    <?php while ($anak = $anak_result->fetch_assoc()): ?>
-                    <tr>
-                        <td><?php echo $anak['nama_lengkap']; ?></td>
-                        <td><?php echo $anak['username']; ?></td>
-                    </tr>
-                    <?php endwhile; ?>
+                            <?php foreach ($anak_rows as $anak): ?>
+                            <tr>
+                                <td><?php echo htmlspecialchars($anak['nama_lengkap']); ?></td>
+                                <td><?php echo htmlspecialchars($anak['username']); ?></td>
+                            </tr>
+                            <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
         
-        <!-- Notifikasi Absen -->
+        <!-- Notifikasi Kehadiran (hanya anak dari orang tua ini) -->
         <div class="section">
-            <h2>Notifikasi Ketidakhadiran</h2>
-            <?php if ($notifikasi_result->num_rows > 0): ?>
+            <h2>Notifikasi Kehadiran Anak</h2>
+            <?php if ($presensi_result && $presensi_result->num_rows > 0): ?>
                 <table>
                     <thead>
                         <tr>
-                            <th>Tanggal</th>
+                            <th>Tanggal Sesi</th>
                             <th>Anak</th>
                             <th>Kelas</th>
                             <th>Mata Pelajaran</th>
                             <th>Status</th>
-                            <th>Waktu Notifikasi</th>
+                            <th>Waktu Presensi</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php while ($notif = $notifikasi_result->fetch_assoc()): ?>
-                        <tr class="<?php echo $notif['dibaca'] ? '' : 'notif-unread'; ?>">
-                            <td><?php echo $notif['tanggal']; ?></td>
-                            <td><?php echo $notif['nama_siswa']; ?></td>
-                            <td><?php echo $notif['nama_kelas']; ?></td>
-                            <td><?php echo $notif['mata_pelajaran']; ?></td>
-                            <td><?php echo $notif['status_absen']; ?></td>
-                            <td><?php echo $notif['created_at']; ?></td>
+                        <?php while ($p = $presensi_result->fetch_assoc()): ?>
+                        <tr>
+                            <td><?php echo htmlspecialchars($p['sesi_tanggal']); ?></td>
+                            <td><?php
+                                // find nama from our anak_rows
+                                $nama = '';
+                                foreach ($anak_rows as $a) {
+                                    if ($a['id'] == $p['siswa_id']) { $nama = $a['nama_lengkap']; break; }
+                                }
+                                echo htmlspecialchars($nama);
+                            ?></td>
+                            <td><?php echo htmlspecialchars($p['nama_kelas']); ?></td>
+                            <td><?php echo htmlspecialchars($p['mata_pelajaran']); ?></td>
+                            <td><?php echo htmlspecialchars($p['status']); ?></td>
+                            <td><?php echo htmlspecialchars($p['waktu_presensi']); ?></td>
                         </tr>
                         <?php endwhile; ?>
                     </tbody>
                 </table>
             <?php else: ?>
-                <p>Tidak ada notifikasi ketidakhadiran.</p>
+                <p>Tidak ada catatan kehadiran untuk anak Anda.</p>
             <?php endif; ?>
         </div>
     </div>
