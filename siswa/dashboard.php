@@ -173,8 +173,9 @@ function buatNotifikasiAbsen($siswa_id, $sesi_id, $status_absen) {
             <div class="card-container">
                 <?php while ($kelas = $kelas_siswa->fetch_assoc()): ?>
                 <?php
-                    // For each class, fetch mata_pelajaran separately so we can render one card per subject
                     $kelas_id = $kelas['id'];
+
+                    // For each class, fetch mata_pelajaran separately so we can render one card per subject
                     $mp_stmt = $conn->prepare("SELECT DISTINCT mata_pelajaran FROM guru_kelas WHERE kelas_id = ? ORDER BY mata_pelajaran ASC");
                     $mp_stmt->bind_param("i", $kelas_id);
                     $mp_stmt->execute();
@@ -182,11 +183,47 @@ function buatNotifikasiAbsen($siswa_id, $sesi_id, $status_absen) {
 
                     // If no subjects found, still render a single card for the class
                     if ($mp_result->num_rows === 0) {
+                        // compute attendance for whole class (no subject filter)
+                        $total_sessions = 0;
+                        $totStmt = $conn->prepare("SELECT COUNT(*) as total FROM sesi_presensi WHERE kelas_id = ?");
+                        if ($totStmt) {
+                            $totStmt->bind_param("i", $kelas_id);
+                            $totStmt->execute();
+                            $totRes = $totStmt->get_result();
+                            if ($totRes && $r = $totRes->fetch_assoc()) {
+                                $total_sessions = (int)$r['total'];
+                            }
+                            $totStmt->close();
+                        }
+                        // hadir count for this student in this kelas (no subject filter)
+                        $hadir_count = 0;
+                        $hadirStmt = $conn->prepare("SELECT COUNT(*) as hadir FROM presensi_siswa ps JOIN sesi_presensi sp ON ps.sesi_id = sp.id WHERE ps.siswa_id = ? AND sp.kelas_id = ? AND ps.status = 'hadir'");
+                        if ($hadirStmt) {
+                            $hadirStmt->bind_param("ii", $siswa_id, $kelas_id);
+                            $hadirStmt->execute();
+                            $hadirRes = $hadirStmt->get_result();
+                            if ($hadirRes && $rr = $hadirRes->fetch_assoc()) {
+                                $hadir_count = (int)$rr['hadir'];
+                            }
+                            $hadirStmt->close();
+                        }
+                        $attendance_pct = null;
+                        if ($total_sessions > 0) {
+                            $attendance_pct = round(($hadir_count / $total_sessions) * 100, 1);
+                        }
                 ?>
                 <div class="card">
                     <h3><?php echo $kelas['nama_kelas']; ?></h3>
                     <p><strong>Tingkat:</strong> <?php echo $kelas['tingkat']; ?></p>
                     <p><strong>Status:</strong> <?php echo $kelas['is_ketua'] ? 'Ketua Kelas' : 'Siswa'; ?></p>
+                    <?php if ($attendance_pct !== null): ?>
+                        <p><strong>Persentase Kehadiran:</strong> <?php echo $attendance_pct; ?>%</p>
+                        <div style="background:#e9ecef; width:100%; height:10px; border-radius:5px; overflow:hidden;">
+                            <div style="width:<?php echo $attendance_pct; ?>%; height:100%; background:#17a2b8;"></div>
+                        </div>
+                    <?php else: ?>
+                        <p><em>Belum ada sesi untuk kelas ini.</em></p>
+                    <?php endif; ?>
                     <button class="btn" onclick="openModal(<?php echo $kelas['id']; ?>, '<?php echo addslashes($kelas['nama_kelas']); ?>', <?php echo $kelas['is_ketua']; ?>)">
                         Lihat Presensi
                     </button>
@@ -195,12 +232,48 @@ function buatNotifikasiAbsen($siswa_id, $sesi_id, $status_absen) {
                     } else {
                         while ($mp = $mp_result->fetch_assoc()) {
                             $mata_pelajaran = $mp['mata_pelajaran'];
+                            // compute attendance for this specific mata_pelajaran
+                            $total_sessions_sub = 0;
+                            $totStmtSub = $conn->prepare("SELECT COUNT(*) as total FROM sesi_presensi WHERE kelas_id = ? AND mata_pelajaran = ?");
+                            if ($totStmtSub) {
+                                $totStmtSub->bind_param("is", $kelas_id, $mata_pelajaran);
+                                $totStmtSub->execute();
+                                $totResSub = $totStmtSub->get_result();
+                                if ($totResSub && $rsub = $totResSub->fetch_assoc()) {
+                                    $total_sessions_sub = (int)$rsub['total'];
+                                }
+                                $totStmtSub->close();
+                            }
+                            $hadir_count_sub = 0;
+                            $hadirStmtSub = $conn->prepare("SELECT COUNT(*) as hadir FROM presensi_siswa ps JOIN sesi_presensi sp ON ps.sesi_id = sp.id WHERE ps.siswa_id = ? AND sp.kelas_id = ? AND sp.mata_pelajaran = ? AND ps.status = 'hadir'");
+                            if ($hadirStmtSub) {
+                                $hadirStmtSub->bind_param("iis", $siswa_id, $kelas_id, $mata_pelajaran);
+                                $hadirStmtSub->execute();
+                                $hadirResSub = $hadirStmtSub->get_result();
+                                if ($hadirResSub && $rrsub = $hadirResSub->fetch_assoc()) {
+                                    $hadir_count_sub = (int)$rrsub['hadir'];
+                                }
+                                $hadirStmtSub->close();
+                            }
+                            $attendance_pct_sub = null;
+                            if ($total_sessions_sub > 0) {
+                                $attendance_pct_sub = round(($hadir_count_sub / $total_sessions_sub) * 100, 1);
+                            }
                 ?>
                 <div class="card">
                     <h3><?php echo $kelas['nama_kelas']; ?> - <?php echo htmlspecialchars($mata_pelajaran); ?></h3>
                     <p><strong>Tingkat:</strong> <?php echo $kelas['tingkat']; ?></p>
                     <p><strong>Mata Pelajaran:</strong> <?php echo htmlspecialchars($mata_pelajaran); ?></p>
                     <p><strong>Status:</strong> <?php echo $kelas['is_ketua'] ? 'Ketua Kelas' : 'Siswa'; ?></p>
+                    <?php if ($attendance_pct_sub !== null): ?>
+                        <p><strong>Persentase Kehadiran:</strong> <?php echo $attendance_pct_sub; ?>%</p>
+                        <div style="background:#e9ecef; width:100%; height:10px; border-radius:5px; overflow:hidden;">
+                            <div style="width:<?php echo $attendance_pct_sub; ?>%; height:100%; background:#17a2b8;"></div>
+                        </div>
+                    <?php else: ?>
+                        <p><em>Belum ada sesi untuk mata pelajaran ini.</em></p>
+                    <?php endif; ?>
+                    <br>    
                     <button class="btn" onclick="openModal(<?php echo $kelas['id']; ?>, '<?php echo addslashes($kelas['nama_kelas']); ?>', <?php echo $kelas['is_ketua']; ?>, '<?php echo addslashes($mata_pelajaran); ?>')">
                         Lihat Presensi
                     </button>

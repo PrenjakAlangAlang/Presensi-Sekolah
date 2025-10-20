@@ -5,11 +5,14 @@ $username = 'root';
 $password = '';
 $database = 'presensi_sekolah';
 
-$conn = new mysqli($host, $username, $password, $database);
+ $conn = new mysqli($host, $username, $password, $database);
 
-if ($conn->connect_error) {
-    die("Koneksi gagal: " . $conn->connect_error);
-}
+ if ($conn->connect_error) {
+     die("Koneksi gagal: " . $conn->connect_error);
+ }
 
-session_start();
+ // Start session only if none exists to avoid notices when included multiple times
+ if (session_status() !== PHP_SESSION_ACTIVE) {
+     @session_start();
+ }
 ?>
