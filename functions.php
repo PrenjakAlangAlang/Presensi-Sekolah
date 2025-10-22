@@ -81,6 +81,37 @@ function getPresensiBySesi($sesi_id) {
     return $stmt->get_result();
 }
 
+// Haversine formula: returns distance in meters between two lat/lon pairs
+function haversineMeters($lat1, $lon1, $lat2, $lon2) {
+    // convert to float
+    $lat1 = floatval($lat1);
+    $lon1 = floatval($lon1);
+    $lat2 = floatval($lat2);
+    $lon2 = floatval($lon2);
+
+    // Earth radius in meters
+    $R = 6371000;
+    $dLat = deg2rad($lat2 - $lat1);
+    $dLon = deg2rad($lon2 - $lon1);
+    $a = sin($dLat/2) * sin($dLat/2) + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLon/2) * sin($dLon/2);
+    $c = 2 * atan2(sqrt($a), sqrt(1-$a));
+    return $R * $c;
+}
+
+// Ensure sesi_presensi table has columns for latitude, longitude and radius (meters)
+function ensureSesiGeoColumns() {
+    global $conn;
+    // Check columns
+    $cols = ['latitude' => "DOUBLE NULL", 'longitude' => "DOUBLE NULL", 'geo_radius_m' => "INT NULL"];
+    foreach ($cols as $col => $definition) {
+        $res = $conn->query("SHOW COLUMNS FROM `sesi_presensi` LIKE '" . $conn->real_escape_string($col) . "'");
+        if ($res && $res->num_rows === 0) {
+            $sql = "ALTER TABLE `sesi_presensi` ADD COLUMN `" . $col . "` " . $definition;
+            $conn->query($sql);
+        }
+    }
+}
+
 // Tutup sesi presensi (opsional verifikasi guru)
 function closeSesi($sesi_id, $guru_id = null) {
     global $conn;

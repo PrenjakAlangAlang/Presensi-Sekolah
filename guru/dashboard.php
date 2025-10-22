@@ -11,17 +11,23 @@ $guru_id = $_SESSION['user_id'];
 
 // Handle buat sesi presensi
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['buat_sesi'])) {
+    // Ensure DB has geo columns for sesi_presensi
+    ensureSesiGeoColumns();
     $kelas_id = $_POST['kelas_id'];
     $mata_pelajaran = $_POST['mata_pelajaran'];
     $tanggal = $_POST['tanggal'];
     $waktu_mulai = $_POST['waktu_mulai'];
     $waktu_selesai = $_POST['waktu_selesai'];
+    // optional geotag data
+    $latitude = isset($_POST['latitude']) && $_POST['latitude'] !== '' ? $_POST['latitude'] : null;
+    $longitude = isset($_POST['longitude']) && $_POST['longitude'] !== '' ? $_POST['longitude'] : null;
+    $geo_radius_m = isset($_POST['geo_radius_m']) && $_POST['geo_radius_m'] !== '' ? intval($_POST['geo_radius_m']) : null;
     $kode_presensi = substr(str_shuffle("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"), 0, 6);
     
-    $sql = "INSERT INTO sesi_presensi (guru_id, kelas_id, mata_pelajaran, tanggal, waktu_mulai, waktu_selesai, kode_presensi) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)";
+    $sql = "INSERT INTO sesi_presensi (guru_id, kelas_id, mata_pelajaran, tanggal, waktu_mulai, waktu_selesai, kode_presensi, latitude, longitude, geo_radius_m) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("iisssss", $guru_id, $kelas_id, $mata_pelajaran, $tanggal, $waktu_mulai, $waktu_selesai, $kode_presensi);
+    $stmt->bind_param("iisssssssi", $guru_id, $kelas_id, $mata_pelajaran, $tanggal, $waktu_mulai, $waktu_selesai, $kode_presensi, $latitude, $longitude, $geo_radius_m);
     $stmt->execute();
     
     $success = "Sesi presensi berhasil dibuat! Kode: " . $kode_presensi;
@@ -140,34 +146,52 @@ $sesi_presensi = $conn->query("SELECT sp.*, k.nama_kelas
             <form method="POST" id="presensiForm">
                 <input type="hidden" name="kelas_id" id="modal_kelas_id">
                 <input type="hidden" name="mata_pelajaran" id="modal_mata_pelajaran">
-                
+
                 <div class="form-group">
                     <label>Kelas:</label>
                     <input type="text" id="modal_nama_kelas" readonly>
                 </div>
-                
+
                 <div class="form-group">
                     <label>Mata Pelajaran:</label>
                     <input type="text" id="modal_mp" readonly>
                 </div>
-                
+
                 <div class="form-group">
                     <label>Tanggal:</label>
                     <input type="date" name="tanggal" required value="<?php echo date('Y-m-d'); ?>">
                 </div>
-                
+
                 <div class="form-group">
                     <label>Waktu Mulai:</label>
                     <input type="time" name="waktu_mulai" required value="<?php echo date('H:i'); ?>">
                 </div>
-                
+
                 <div class="form-group">
                     <label>Waktu Selesai:</label>
                     <input type="time" name="waktu_selesai" required value="<?php echo date('H:i', strtotime('+1 hour')); ?>">
                 </div>
-                
-                <button type="submit" name="buat_sesi" class="btn">Buat Sesi Presensi</button>
-                <button type="button" class="btn" style="background: #6c757d;" onclick="closeModal()">Batal</button>
+
+                <div class="form-group">
+                    <label>Latitude (opsional):</label>
+                    <input type="text" name="latitude" id="modal_latitude" placeholder="e.g. -6.200000">
+                </div>
+
+                <div class="form-group">
+                    <label>Longitude (opsional):</label>
+                    <input type="text" name="longitude" id="modal_longitude" placeholder="e.g. 106.816666">
+                </div>
+
+                <div class="form-group">
+                    <label>Radius Geofence (meter, opsional):</label>
+                    <input type="number" name="geo_radius_m" id="modal_radius" placeholder="e.g. 100">
+                </div>
+
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <button type="button" class="btn" onclick="fillMyLocation()">Isi dengan lokasi saya</button>
+                    <button type="submit" name="buat_sesi" class="btn">Buat Sesi Presensi</button>
+                    <button type="button" class="btn" style="background: #6c757d;" onclick="closeModal()">Batal</button>
+                </div>
             </form>
         </div>
     </div>
@@ -219,6 +243,20 @@ $sesi_presensi = $conn->query("SELECT sp.*, k.nama_kelas
             if (event.target == modal) {
                 closeModal();
             }
+        }
+    </script>
+    <script>
+        function fillMyLocation() {
+            if (!navigator.geolocation) {
+                alert('Geolocation tidak didukung oleh browser Anda');
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(function(pos) {
+                document.getElementById('modal_latitude').value = pos.coords.latitude;
+                document.getElementById('modal_longitude').value = pos.coords.longitude;
+            }, function(err) {
+                alert('Gagal mendapatkan lokasi: ' + err.message);
+            }, { enableHighAccuracy: true });
         }
     </script>
 </body>

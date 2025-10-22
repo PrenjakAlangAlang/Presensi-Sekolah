@@ -56,7 +56,11 @@ $siswa_id = $_SESSION['user_id'];
 
 if ($sesi_result->num_rows > 0) {
     while ($sesi = $sesi_result->fetch_assoc()) {
-        echo '<div class="sesi-item">';
+        $data_attrs = '';
+        if ($sesi['latitude'] !== null) $data_attrs .= ' data-lat="' . htmlspecialchars($sesi['latitude']) . '"';
+        if ($sesi['longitude'] !== null) $data_attrs .= ' data-lon="' . htmlspecialchars($sesi['longitude']) . '"';
+        if ($sesi['geo_radius_m'] !== null) $data_attrs .= ' data-radius="' . htmlspecialchars($sesi['geo_radius_m']) . '"';
+        echo '<div class="sesi-item"' . $data_attrs . '>';
         echo '<h4>' . $sesi['mata_pelajaran'] . '</h4>';
         echo '<p><strong>Guru:</strong> ' . $sesi['nama_guru'] . '</p>';
         echo '<p><strong>Tanggal:</strong> ' . $sesi['tanggal'] . '</p>';
@@ -64,6 +68,11 @@ if ($sesi_result->num_rows > 0) {
         
         if ($sesi['kode_presensi']) {
             echo '<p><strong>Kode:</strong> ' . $sesi['kode_presensi'] . '</p>';
+        }
+
+        if ($sesi['latitude'] !== null && $sesi['longitude'] !== null) {
+            $radius_info = $sesi['geo_radius_m'] ? ' (radius ' . intval($sesi['geo_radius_m']) . ' m)' : '';
+            echo '<p><strong>Lokasi Presensi:</strong> ' . htmlspecialchars($sesi['latitude']) . ', ' . htmlspecialchars($sesi['longitude']) . $radius_info . '</p>';
         }
         
         // Form presensi siswa

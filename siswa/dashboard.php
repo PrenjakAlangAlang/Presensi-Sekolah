@@ -13,6 +13,9 @@ $siswa_id = $_SESSION['user_id'];
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['presensi'])) {
     $sesi_id = $_POST['sesi_id'];
     $status = $_POST['status'];
+    // optional submitted geolocation from browser
+    $submitted_lat = isset($_POST['latitude']) && $_POST['latitude'] !== '' ? $_POST['latitude'] : null;
+    $submitted_lon = isset($_POST['longitude']) && $_POST['longitude'] !== '' ? $_POST['longitude'] : null;
     // Cek status sesi: hanya izinkan presensi jika sesi masih 'aktif'
     $sesi_check = $conn->prepare("SELECT status FROM sesi_presensi WHERE id = ? LIMIT 1");
     if ($sesi_check) {
@@ -39,6 +42,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['presensi'])) {
     $cek_result = $cek_stmt->get_result();
     
     if (!isset($error) && $cek_result->num_rows === 0) {
+        // If the sesi has geo settings, verify submitted location is within radius
+        $geo_ok = true;
+        $geo_stmt = $conn->prepare("SELECT latitude, longitude, geo_radius_m FROM sesi_presensi WHERE id = ? LIMIT 1");
+        if ($geo_stmt) {
+            $geo_stmt->bind_param('i', $sesi_id);
+            $geo_stmt->execute();
+            $gres = $geo_stmt->get_result();
+            if ($gres && $grow = $gres->fetch_assoc()) {
+                $s_lat = $grow['latitude'];
+                $s_lon = $grow['longitude'];
+                $s_rad = $grow['geo_radius_m'];
+                if ($s_lat !== null && $s_lon !== null && $s_rad !== null) {
+                    // require submitted coords
+                        if ($submitted_lat === null || $submitted_lon === null) {
+                            $geo_ok = false;
+                            $error = "Presensi ini memerlukan lokasi Anda. Mohon aktifkan geolocation pada browser dan coba lagi.";
+                        } else {
+                            $dist = haversineMeters($s_lat, $s_lon, $submitted_lat, $submitted_lon);
+                            if ($dist > intval($s_rad)) {
+                                // Jika di luar radius, ubah status otomatis menjadi 'alpha' dan lanjutkan
+                                $status = 'alpha';
+                                // catat informasi jarak untuk ditampilkan ke user nanti
+                                $outside_note = "Anda berada di luar area presensi (jarak " . round($dist) . " m) — status diubah menjadi 'alpha'.";
+                            }
+                        }
+                }
+            }
+            $geo_stmt->close();
+        }
+
+        if (!isset($error) && $geo_ok) {
         $sql = "INSERT INTO presensi_siswa (sesi_id, siswa_id, status, waktu_presensi) 
                 VALUES (?, ?, ?, NOW())";
         $stmt = $conn->prepare($sql);
@@ -51,6 +85,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['presensi'])) {
         }
         
         $success = "Presensi berhasil!";
+        if (isset($outside_note)) {
+            $success .= " -- " . $outside_note;
+        }
+        }
     } else {
         $error = "Anda sudah melakukan presensi untuk sesi ini.";
     }
@@ -339,25 +377,43 @@ function buatNotifikasiAbsen($siswa_id, $sesi_id, $status_absen) {
                 alert('Pilih status presensi!');
                 return;
             }
-            
-            var form = document.createElement('form');
-            form.method = 'POST';
-            form.style.display = 'none';
-            var inputs = [
-                {name: 'sesi_id', value: sesiId},
-                {name: 'status', value: status},
-                {name: 'presensi', value: '1'}
-            ];
-            inputs.forEach(function(i) {
-                var el = document.createElement('input');
-                el.type = 'hidden';
-                el.name = i.name;
-                el.value = i.value;
-                form.appendChild(el);
-            });
-            
-            document.body.appendChild(form);
-            form.submit();
+            // Try to get geolocation and include it in the POST
+            function submitWithCoords(lat, lon) {
+                var form = document.createElement('form');
+                form.method = 'POST';
+                form.style.display = 'none';
+                var inputs = [
+                    {name: 'sesi_id', value: sesiId},
+                    {name: 'status', value: status},
+                    {name: 'presensi', value: '1'},
+                    {name: 'latitude', value: lat},
+                    {name: 'longitude', value: lon}
+                ];
+                inputs.forEach(function(i) {
+                    var el = document.createElement('input');
+                    el.type = 'hidden';
+                    el.name = i.name;
+                    el.value = i.value;
+                    form.appendChild(el);
+                });
+                document.body.appendChild(form);
+                form.submit();
+            }
+
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    submitWithCoords(position.coords.latitude, position.coords.longitude);
+                }, function(err) {
+                    // If user denies or error, ask whether to submit without coords
+                    if (confirm('Gagal mendapatkan lokasi (' + err.message + '). Kirim presensi tanpa lokasi?')) {
+                        submitWithCoords('', '');
+                    }
+                }, { enableHighAccuracy: true, timeout: 8000 });
+            } else {
+                if (confirm('Browser Anda tidak mendukung geolocation. Kirim presensi tanpa lokasi?')) {
+                    submitWithCoords('', '');
+                }
+            }
         }
         
         function presensiGuru(sesiId, guruId) {
